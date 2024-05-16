@@ -19,18 +19,33 @@ on:
 
 jobs:
   build_wheels:
-    name: Build wheels on ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2022, macos-11]
+        include:
+        - os: ubuntu-22.04
+          arch: x86_64
+        - os: ubuntu-22.04
+          arch: aarch64
+        - os: windows-2022
+          arch: AMD64
+        - os: macos-11
+          arch: x86_64
+          macosx_deployment_target: "11.0"
+          cmake_osx_architectures: x86_64
+        - os: macos-14
+          arch: arm64
+          macosx_deployment_target: "14.0"
+          cmake_osx_architectures: arm64
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v2
+        if: runner.os == 'Linux' && matrix.arch == 'aarch64'
+        uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
@@ -55,25 +70,33 @@ jobs:
           bash scripts/build_lib.sh
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.15.0
+        uses: pypa/cibuildwheel@v2.18.0
+        env:
+          CIBW_BUILD: "cp39-*"  # pick one version
+          CIBW_SKIP: "*-musllinux*"
+          CIBW_ARCHS: ${{ matrix.arch }}
+          CIBW_ENVIRONMENT_MACOS:
+            FC=gfortran-13
+            MACOSX_DEPLOYMENT_TARGET='${{ matrix.macosx_deployment_target }}'
+            CMAKE_OSX_ARCHITECTURES='${{ matrix.cmake_osx_architectures }}'
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
-          name: pypestutils
+          name: cibw-wheels-${{ matrix.os }}-${{ matrix.arch }}
           path: ./wheelhouse/*.whl
 
   build_sdist:
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Build sdist
         run: pipx run build --sdist
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
-          name: pypestutils
+          name: cibw-sdist
           path: dist/*.tar.gz
 
   upload_pypi:
@@ -86,13 +109,12 @@ jobs:
     # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
     # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          # unpacks default artifact into dist/
-          name: pypestutils
+          # unpacks all CIBW artifacts into dist/
+          pattern: cibw-*
           path: dist
+          merge-multiple: true
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          # To test: repository_url: https://test.pypi.org/legacy/
-          repository_url: https://test.pypi.org/legacy/
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
