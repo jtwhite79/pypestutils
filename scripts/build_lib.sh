@@ -4,8 +4,6 @@ set -e
 # always run from top of repo
 cd $(dirname $0)/..
 
-export LDFLAGS="$LDFLAGS -Wl,-ld_classic"
-
 # this needs bash
 case "$OSTYPE" in
   darwin*)  libname=lib/libpestutils.dylib ;;
