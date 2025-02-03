@@ -76,6 +76,23 @@ before-build = [
 [tool.cibuildwheel.windows]
 before-build = "pip install wheel"
 
+[tool.codespell]
+skip = "*.grb,*.log,./pestutils/sgsim_code.f90,./pestutils/lapack1.F"
+ignore-words-list = [
+    "acount",
+    "afile",
+    "aline",
+    "alo",
+    "delt",
+    "ect",
+    "gaus",
+    "inout",
+    "nam",
+    "nd",
+    "rel",
+    "wel",
+]
+
 [tool.ruff.lint]
 select = [
     "D",    # pydocstyle
