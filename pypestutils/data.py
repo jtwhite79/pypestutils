@@ -1,4 +1,5 @@
 """Data module."""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -70,9 +71,9 @@ def validate_scalar(name: str, value: Any, **kwargs) -> None:
         enum_t = kwargs.pop("enum")
         if not (isclass(enum_t) and issubclass(enum_t, ParamEnum)):
             raise TypeError("enum must be a subclass of ParamEnum")
-        elif isinstance(value, Enum) and not isinstance(value, enum_t):
+        if isinstance(value, Enum) and not isinstance(value, enum_t):
             raise TypeError(f"'{value!s}' is not an enum {enum_t.__name__}")
-        elif not isinstance(value, int):
+        if not isinstance(value, int):
             raise TypeError(f"enum value must be either {enum_t.__name__} or int")
         valid_options = enum_t.get_valid_options()
         if not np.isin(value, list(valid_options.keys())):
@@ -85,9 +86,9 @@ def validate_scalar(name: str, value: Any, **kwargs) -> None:
         minlen = kwargs.pop("minlen")
         if minlen < 1:
             raise TypeError("minlen must be 1 or more")
-        elif minlen == 1 and valuelen < 1:  # special case `minlen=1`
+        if minlen == 1 and valuelen < 1:  # special case `minlen=1`
             raise ValueError(f"'{name}' cannot have zero len")
-        elif valuelen < minlen:
+        if valuelen < minlen:
             raise ValueError(f"'{name}' has a min len {minlen} (was {len(value)})")
     if "maxlen" in kwargs:
         valuelen = len(value)
@@ -143,7 +144,7 @@ class ManyArrays:
                 raise KeyError(f"'{name}' defined more than once")
             self._names.append(name)
             # Each must be 1D and the same shape
-            ar = np.array(float_arrays[name], np.float64, order="F", copy=False)
+            ar = np.asarray(float_arrays[name], np.float64, order="F")
             if ar.ndim != 1:
                 raise ValueError(f"expected '{name}' ndim to be 1; found {ar.ndim}")
             if not self.shape:
@@ -157,16 +158,14 @@ class ManyArrays:
             if name in self._names:
                 raise KeyError(f"'{name}' defined more than once")
             self._names.append(name)
-            float_any[name] = ar = np.array(
-                float_any[name], np.float64, order="F", copy=False
-            )
+            float_any[name] = ar = np.asarray(float_any[name], np.float64, order="F")
             if not self.shape and ar.ndim == 1:
                 self.shape = ar.shape
         for name in int_any.keys():
             if name in self._names:
                 raise KeyError(f"'{name}' defined more than once")
             self._names.append(name)
-            int_any[name] = ar = np.array(int_any[name], order="F", copy=False)
+            int_any[name] = ar = np.asarray(int_any[name], order="F")
             if not self.shape and ar.ndim == 1:
                 self.shape = ar.shape
         if not self.shape:
@@ -256,7 +255,7 @@ class ManyArrays:
             enum_t = kwargs.pop("enum")
             if not (isclass(enum_t) and issubclass(enum_t, ParamEnum)):
                 raise TypeError("enum must be a subclass of ParamEnum")
-            elif not np.issubdtype(dtp, np.integer):
+            if not np.issubdtype(dtp, np.integer):
                 raise TypeError(f"'{name}' values must be integer type")
             valid_options = enum_t.get_valid_options()
             if not np.isin(ar, list(valid_options.keys())).all():

@@ -1,4 +1,5 @@
 """Mid-level pestutilslib module to implement ctypes functions."""
+
 from __future__ import annotations
 
 import logging
@@ -47,7 +48,7 @@ class PestUtilsLib:
     #            self.logger.warning("cannot call __del__: %s", err)
 
     def create_char_array(self, init: str | bytes, name: str):
-        """Create c_char Array with a fixed size from dimvar and intial value.
+        """Create c_char Array with a fixed size from dimvar and initial value.
 
         Parameters
         ----------
@@ -386,19 +387,19 @@ class PestUtilsLib:
         np.ndarray
             Time-interpolated simulation values with shape (nobs,).
         """
-        simtime = np.array(simtime, dtype=np.float64, order="F", copy=False)
-        simval = np.array(simval, dtype=np.float64, order="F", copy=False)
-        obspoint = np.array(obspoint, order="F", copy=False)
-        obstime = np.array(obstime, dtype=np.float64, order="F", copy=False)
+        simtime = np.asarray(simtime, dtype=np.float64, order="F")
+        simval = np.asarray(simval, dtype=np.float64, order="F")
+        obspoint = np.asarray(obspoint, order="F")
+        obstime = np.asarray(obstime, dtype=np.float64, order="F")
         if simtime.ndim != 1:
             raise ValueError("expected 'simtime' to have ndim=1")
-        elif simval.ndim != 2:
+        if simval.ndim != 2:
             raise ValueError("expected 'simval' to have ndim=2")
-        elif obspoint.ndim != 1:
+        if obspoint.ndim != 1:
             raise ValueError("expected 'obspoint' to have ndim=1")
-        elif obstime.ndim != 1:
+        if obstime.ndim != 1:
             raise ValueError("expected 'obstime' to have ndim=1")
-        elif not np.issubdtype(obspoint.dtype, np.integer):
+        if not np.issubdtype(obspoint.dtype, np.integer):
             raise ValueError(
                 f"expected 'obspoint' to be integer type; found {obspoint.dtype}"
             )
@@ -589,8 +590,7 @@ class PestUtilsLib:
         nointerpval: float,
         npts: int,
     ) -> dict:
-        """
-        Interpolate points using previously-calculated interpolation factors.
+        """Interpolate points using previously-calculated interpolation factors.
 
         Parameters
         ----------
@@ -670,8 +670,7 @@ class PestUtilsLib:
         nzone: int,
         ntime: int,
     ) -> dict:
-        """
-        Read and accumulates flows from a CBC flow file to a user-specified BC.
+        """Read and accumulates flows from a CBC flow file to a user-specified BC.
 
         Parameters
         ----------
@@ -775,8 +774,7 @@ class PestUtilsLib:
         factorfile: str | PathLike,
         factorfiletype: int | str | enum.FactorFileType,
     ) -> int:
-        """
-        Calculate 2D kriging factors.
+        """Calculate 2D kriging factors.
 
         Parameters
         ----------
@@ -870,8 +868,7 @@ class PestUtilsLib:
         factorfile: str | PathLike,
         factorfiletype: int | str | enum.FactorFileType,
     ) -> int:
-        """
-        Calculate 2D kriging factors, with automatic variogram properties.
+        """Calculate 2D kriging factors, with automatic variogram properties.
 
         Parameters
         ----------
@@ -962,8 +959,7 @@ class PestUtilsLib:
         factorfile: str | PathLike,
         factorfiletype: int | str | enum.FactorFileType,
     ) -> int:
-        """
-        Calculate 3D kriging factors.
+        """Calculate 3D kriging factors.
 
         Parameters
         ----------
@@ -1078,8 +1074,7 @@ class PestUtilsLib:
         meanval: float | npt.ArrayLike | None,
         nointerpval: float,
     ) -> dict:
-        """
-        Apply interpolation factors calculated by other functions.
+        """Apply interpolation factors calculated by other functions.
 
         Parameters
         ----------
@@ -1092,7 +1087,7 @@ class PestUtilsLib:
         krigtype : int, str, or enum.KrigType,
             Kriging type, where 0:simple, 1:ordinary.
         transtype : int, str, enum.TransType
-            Tranformation type, where 0 is none and 1 is log.
+            Transformation type, where 0 is none and 1 is log.
         sourceval : array_like
             Values at sources, 1D array with shape (npts,).
         meanval : float, array_like, optional
@@ -1107,6 +1102,7 @@ class PestUtilsLib:
             Values calculated for targets.
         icount_interp : int
             Number of interpolation pts.
+
         """
         factorfile = Path(factorfile)
         if not factorfile.is_file():
@@ -1162,8 +1158,7 @@ class PestUtilsLib:
         bearing: float | npt.ArrayLike,
         ldcovmat: int,
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate a covariance matrix for a set of 2D pilot points.
+        """Calculate a covariance matrix for a set of 2D pilot points.
 
         Parameters
         ----------
@@ -1235,8 +1230,7 @@ class PestUtilsLib:
         rake: float | npt.ArrayLike,
         ldcovmat: int,
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate a covariance matrix for a set of 3D pilot points.
+        """Calculate a covariance matrix for a set of 3D pilot points.
 
         Parameters
         ----------
@@ -1259,6 +1253,7 @@ class PestUtilsLib:
         -------
         npt.NDArray[np.float64]
             2D matrix covmat(ldcovmat, npts).
+
         """
         pta = ManyArrays(
             {"ec": ec, "nc": nc, "zc": zc},
@@ -1318,8 +1313,7 @@ class PestUtilsLib:
         factorfile: str | PathLike,
         factorfiletype: int | str | enum.FactorFileType,
     ) -> int:
-        """
-        Calculate interpolation/blending factors for structural overlay parameters.
+        """Calculate interpolation/blending factors for structural overlay parameters.
 
         Parameters
         ----------
@@ -1395,8 +1389,8 @@ class PestUtilsLib:
         sourceval: npt.ArrayLike,
         targval: npt.ArrayLike,
     ) -> dict:
-        """
-        Apply interpolation factors calculated by :meth:`calc_structural_overlay_factors`.
+        """Apply interpolation factors calculated by
+        :meth:`calc_structural_overlay_factors`.
 
         Parameters
         ----------
@@ -1405,7 +1399,7 @@ class PestUtilsLib:
         factorfiletype : int, str or enum.FactorFileType
             Factor file type, where 0:binary, 1:text.
         transtype : int, str, enum.TransType
-            Tranformation type, where 0 is none and 1 is log.
+            Transformation type, where 0 is none and 1 is log.
         lt_target, gt_target : str or bool
             Whether to undercut or exceed target, use "Y"/"N" or bool.
         sourceval : array_like
@@ -1487,7 +1481,7 @@ class PestUtilsLib:
         znt : int or array_like
             Target point zones, integer or 1D array with shape (mpts,).
         transtype : int, str, enum.TransType
-            Tranformation type, where 0 is none and 1 is log.
+            Transformation type, where 0 is none and 1 is log.
         anis : float or array_like
             Local anisotropy, float or 1D array with shape (mpts,).
         bearing : float or array_like
@@ -1571,7 +1565,7 @@ class PestUtilsLib:
         znt : int or array_like
             Target point zones, integer or 1D array with shape (mpts,).
         transtype : int, str, enum.TransType
-            Tranformation type, where 0 is none and 1 is log.
+            Transformation type, where 0 is none and 1 is log.
         ahmax, ahmin, avert : float or array_like
             Relative correlation lengths, float or 1D array with shape (mpts,).
         bearing, dip, rake : float or array_like
@@ -1634,8 +1628,7 @@ class PestUtilsLib:
         return targval.copy("A")
 
     def initialize_randgen(self, iseed: int) -> None:
-        """
-        Initialize the random number generator.
+        """Initialize the random number generator.
 
         Parameters
         ----------
@@ -1665,8 +1658,7 @@ class PestUtilsLib:
         # ldrand: int,  # same as nnode
         nreal: int,
     ) -> npt.NDArray[np.float64]:
-        """
-        Generate 2D stochastic fields based on a spatially varying variogram.
+        """Generate 2D stochastic fields based on a spatially varying variogram.
 
         Parameters
         ----------
@@ -1764,8 +1756,7 @@ class PestUtilsLib:
         # ldrand: int,  # same as nnode
         nreal: int,
     ) -> npt.NDArray[np.float64]:
-        """
-        Generate 3D stochastic fields based on a spatially varying variogram.
+        """Generate 3D stochastic fields based on a spatially varying variogram.
 
         Parameters
         ----------

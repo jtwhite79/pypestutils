@@ -23,13 +23,14 @@ classifiers = [
     "Programming Language :: Fortran",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Hydrology",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "numpy",
     "pandas",
@@ -38,6 +39,7 @@ dependencies = [
 [project.optional-dependencies]
 optional = [
     "flopy",
+    "jupyter",
     "pyemu",
 ]
 test = [
@@ -57,20 +59,16 @@ version = {attr = "pypestutils.version.__version__"}
 include = ["pypestutils", "pypestutils.*"]
 
 [tool.cibuildwheel]
-build-verbosity = "2"
+build = "cp39-*"
+build-verbosity = 3
 repair-wheel-command = "python scripts/repair_wheel.py -w {dest_dir} {wheel}"
 test-requires = "tox"
 test-command = "tox --conf {project} --installpkg {wheel}"
-
-[tool.cibuildwheel.linux]
-before-build = [
-    "pip install meson ninja wheel",
-    "bash {project}/scripts/build_lib.sh",
+test-skip = [
+    "*-musllinux*",
+    "*aarch64",  # slow!
 ]
-test-skip = "*aarch64"  # slow!
-
-[tool.cibuildwheel.macos]
-# see CIBW_ENVIRONMENT_MACOS in release.yml
+# see also CIBW_ENVIRONMENT_MACOS in release.yml
 before-build = [
     "pip install meson ninja wheel",
     "bash {project}/scripts/build_lib.sh",
@@ -79,5 +77,42 @@ before-build = [
 [tool.cibuildwheel.windows]
 before-build = "pip install wheel"
 
-[tool.isort]
-profile = "black"
+[tool.codespell]
+skip = "*.grb,*.log,./pestutils/sgsim_code.f90,./pestutils/lapack1.F"
+ignore-words-list = [
+    "acount",
+    "afile",
+    "aline",
+    "alo",
+    "delt",
+    "ect",
+    "gaus",
+    "inout",
+    "nam",
+    "nd",
+    "rel",
+    "wel",
+]
+
+[tool.ruff.lint]
+select = [
+    "D",    # pydocstyle
+    "E", "W", # pycodestyle
+    "F",    # Pyflakes
+    "I",    # isort
+    "RET",  # flake8-return
+    "UP",   # pyupgrade
+]
+ignore = [
+    "D205",  # 1 blank line required between summary line and description
+]
+
+[tool.ruff.lint.per-file-ignores]
+"setup.py" = ["D"]
+"docs/*.py" = ["D"]
+"examples/*" = ["D"]
+"scripts/*.py" = ["D"]
+"tests/*.py" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
