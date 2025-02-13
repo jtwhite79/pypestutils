@@ -31,6 +31,5 @@ dependencies:
     - git+https://github.com/modflowpy/flopy.git
     - pdoc3
 
-
 # Win64 may also want
 # - m2w64-gcc-fortran
