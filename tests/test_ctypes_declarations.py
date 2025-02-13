@@ -1,4 +1,5 @@
 """Tests for ctypes_declarations module."""
+
 from ctypes import c_int
 
 import pytest

@@ -1,4 +1,5 @@
 """Tests for data module."""
+
 import numpy as np
 import pytest
 

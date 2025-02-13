@@ -1,4 +1,5 @@
 """Tests for enum module."""
+
 import pytest
 
 from pypestutils.enum import KrigType
