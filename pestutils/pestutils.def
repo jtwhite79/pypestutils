@@ -27,5 +27,8 @@ EXPORTS
    initialize_randgen
    fieldgen2d_sva
    fieldgen3d_sva
+   fill_stdnormal
+   fieldgen2d_sva_iid
+   fieldgen3d_sva_iid
    get_cell_centres_structured
    get_cell_centres_mf6

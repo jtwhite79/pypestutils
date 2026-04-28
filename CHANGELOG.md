@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- `fieldgen2d_sva_iid` and `fieldgen3d_sva_iid`: variants of `fieldgen2d_sva` /
+  `fieldgen3d_sva` that take a caller-supplied `(nnode, nreal)` array of
+  standard normal variates rather than drawing them internally. No call to
+  `initialize_randgen` is required.
+- `fill_stdnormal`: helper that fills a `(nrow, ncol)` array with standard
+  normal variates in the same loop order used internally by `fieldgen2d_sva` /
+  `fieldgen3d_sva`, so the new `_iid` variants can reproduce the output of
+  the original functions for a given seed.
+
 ### Changed
 ### Fixed
 

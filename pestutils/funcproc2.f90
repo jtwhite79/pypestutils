@@ -3884,6 +3884,599 @@ end function fieldgen3d_sva
 
 
 
+integer (kind=c_int) function fill_stdnormal(nrow,ncol,array) &
+                 bind(C,name="fill_stdnormal")
+
+! -- This function fills a (nrow,ncol) array with standard normal variates,
+! -- in the same loop order used internally by fieldgen2d_sva and fieldgen3d_sva
+! -- (outer loop over the second index, inner loop over the first index). It is
+! -- provided so that callers of fieldgen2d_sva_iid / fieldgen3d_sva_iid can
+! -- reproduce the variate sequence that the original (non-iid) functions would
+! -- have drawn for a given seed.
+
+       use iso_c_binding, only: c_int,c_double
+       use utilities
+       implicit none
+
+       integer(kind=c_int), intent(in)   :: nrow
+       integer(kind=c_int), intent(in)   :: ncol
+       real(kind=c_double), intent(out)  :: array(nrow,ncol)
+
+       integer :: i,j
+
+       fill_stdnormal=0
+       function_name='fill_stdnormal()'
+
+       if(.not.allocated(seed))then
+         write(amessage,90) trim(function_name)
+90       format(' The random number generator must be seeded before calling function ',a,'.')
+         go to 9890
+       end if
+       if(nrow.le.0)then
+         write(amessage,100) 'NROW',trim(function_name)
+100      format('The ',a,' argument of function ',a,' must be greater than zero.')
+         go to 9890
+       end if
+       if(ncol.le.0)then
+         write(amessage,100) 'NCOL',trim(function_name)
+         go to 9890
+       end if
+
+       do j=1,ncol
+         do i=1,nrow
+           array(i,j)=utl_random_normal()
+         end do
+       end do
+       return
+
+9890   fill_stdnormal=1
+       return
+
+end function fill_stdnormal
+
+
+
+integer (kind=c_int) function fieldgen2d_sva_iid(            &
+                              nnode,                         &
+                              ec,nc,area,active,             &
+                              mean,var,aa,anis,bearing,      &
+                              transtype,avetype,power,       &
+                              ldrand,nreal,diid,randfield)   &
+                 bind(C,name="fieldgen2d_sva_iid")
+
+! -- This function generates stochastic fields based on a spatially varying variogram.
+! -- It does this by 2D spatial convolution of an averaging function.
+! -- It differs from fieldgen2d_sva in that the standard normal variates used in the
+! -- convolution are supplied by the caller via the DIID array, rather than drawn
+! -- internally from the random number generator.
+
+       use iso_c_binding, only: c_int,c_double
+       use dimvar
+       use utilities
+       implicit none
+
+       integer(kind=c_int), intent(in)   :: nnode                  ! Nodes in model grid
+       real(kind=c_double), intent(in)   :: ec(nnode),nc(nnode)    ! x and y coordinates of nodes
+       real(kind=c_double), intent(in)   :: area(nnode)            ! Areas of grid cells
+       integer(kind=c_int), intent(in)   :: active(nnode)          ! 0=inactive cell
+       real(kind=c_double), intent(in)   :: mean(nnode)            ! Mean value of stochastic field
+       real(kind=c_double), intent(in)   :: var(nnode)             ! Variance of stochastic field
+       real(kind=c_double), intent(in)   :: aa(nnode)              ! Averaging function spatial dimension
+       real(kind=c_double), intent(in)   :: anis(nnode)            ! Anisotropy ratio
+       real(kind=c_double), intent(in)   :: bearing(nnode)         ! Bearing of principal anisotropy axis
+       integer(kind=c_int), intent(in)   :: transtype              ! Stochastic field pertains to natural(0) or log(1) props
+       integer(kind=c_int), intent(in)   :: avetype                ! 1:spher,2:exp,3:gauss,4:pow
+       real(kind=c_double), intent(in)   :: power                  ! Power used in power AVETYPE
+       integer(kind=c_int), intent(in)   :: ldrand                 ! Leading dimension of RANDFIELD and DIID
+       integer(kind=c_int), intent(in)   :: nreal                  ! Number of realisations to generate
+       real(kind=c_double), intent(in)   :: diid(ldrand,nreal)     ! Standard normal variates supplied by caller
+       real(kind=c_double), intent(out)  :: randfield(ldrand,nreal)! Realisations
+
+       integer                 :: jnode,knode
+       integer                 :: ireal
+       double precision        :: xi,yi
+       double precision        :: vvar,along,amid,cosang1,sinang1,ang1
+       double precision        :: den_along,den_along2,den_amid,den_amid2,den
+       double precision        :: xdiff,ydiff,dlong,dmid
+       double precision        :: dtemp,dtemp1,dtemp2,dtemp3
+       double precision        :: dlim,pidiv180
+       character(len=25)       :: varname
+
+! -- Initialisation
+
+       fieldgen2d_sva_iid=0
+       function_name='fieldgen2d_sva_iid()'
+       pidiv180=3.1415926535898d0/180.0d0
+       dlim=1.0d-5
+
+! -- Check input arguments.
+
+       if((transtype.ne.0).and.(transtype.ne.1))then
+         write(amessage,100) 'TRANSTYPE',trim(function_name)
+100      format('The ',a,' argument of function ',a,' must be ',  &
+         'supplied as 0 or 1.')
+         go to 9890
+       end if
+       if((avetype.ne.1).and.(avetype.ne.2).and.(avetype.ne.3).and.(avetype.ne.4))then
+         write(amessage,105)  trim(function_name)
+105      format('The AVETYPE argument of function ',a,' must be ',  &
+         'supplied as 1, 2, 3 or 4.')
+         go to 9890
+       end if
+       if(avetype.eq.4)then
+         if(power.le.0.0d0)then
+           write(amessage,106) trim(function_name)
+106        format('If AVETYPE is set to 4, then the POWER argument of function ',a,    &
+           ' must be greater than zero.')
+           go to 9890
+         end if
+       end if
+       if(nnode.le.0)then
+         varname='NNODE'
+         go to 9000
+       end if
+       if(nreal.le.0)then
+         varname='NREAL'
+         go to 9000
+       end if
+       if(ldrand.lt.nnode)then
+         write(amessage,107) trim(function_name)
+107      format(' LDRAND must equal or exceed NNODE in call to function ',a,'.')
+         go to 9890
+       end if
+       if(all(active.eq.0))then
+         varname='ACTIVE'
+         go to 9100
+       end if
+       do jnode=1,nnode
+         if(active(jnode).ne.0)then
+           if(area(jnode).le.0.0d0)then
+             write(amessage,170) 'AREA'
+170          format('At least one ',a,' value is zero or negative for an active model node.')
+             go to 9890
+           end if
+           if(var(jnode).lt.0.0d0)then
+             write(amessage,171) 'VAR'
+171          format('At least one ',a,' value is negative for an active model node.')
+             go to 9890
+           end if
+           if(aa(jnode).le.0.0d0)then
+             write(amessage,170) 'AA'
+             go to 9890
+           end if
+           if(anis(jnode).le.0.0d0)then
+             write(amessage,170) 'ANIS'
+             go to 9890
+           end if
+           if((bearing(jnode).lt.-360.0d0).or.(bearing(jnode).gt.360.0d0))then
+             write(amessage,180)
+180          format('At least one BEARING value is less than -360 degrees or greater than ',  &
+             '360 degrees for an active model node.')
+             go to 9890
+           end if
+         end if
+       end do
+
+! -- Allocate the work vector used in the convolution loop.
+
+       if(utl_allocate_vector('d',1,nreal).ne.0) go to 9200
+
+! -- Evaluate limit threshold
+
+       if(dlim.eq.0.0d0)then
+         dlim=1.0d30
+       else
+         if(avetype.eq.2)then
+           dlim=-log(dlim)
+           dlim=dlim*dlim              ! applies to x^2
+         else if(avetype.eq.3)then
+           dlim=-log(dlim)             ! applies to x^2
+         else if(avetype.eq.1)then
+           dlim=1.0d0
+         else if(avetype.eq.4)then
+           dlim=1.0d0
+         end if
+       end if
+
+! -- Do the convolution
+
+       do jnode=1,nnode
+         if(active(jnode).ne.0)then
+           xi=ec(jnode)
+           yi=nc(jnode)
+           vvar=var(jnode)
+           along=aa(jnode)
+           amid=aa(jnode)/anis(jnode)
+           ang1=90.0d0-bearing(jnode)
+           cosang1=cos(ang1*pidiv180)
+           sinang1=sin(ang1*pidiv180)
+           den_along=1.0d0/along
+           den_along2=den_along*den_along
+           den_amid=1.0d0/amid
+           den_amid2=den_amid*den_amid
+           den=0.0d0
+           dvector1=0.0d0   ! an array
+           do knode=1,nnode
+             if(active(knode).eq.0) cycle
+             xdiff=ec(knode)-xi
+             ydiff=nc(knode)-yi
+             dlong=xdiff*cosang1+ydiff*sinang1
+             dmid=-xdiff*sinang1+ydiff*cosang1
+             if(avetype.eq.2)then
+               dtemp1=dlong*dlong*den_along2
+               if(dtemp1.gt.dlim) cycle
+               dtemp2=dmid*dmid*den_amid2
+               if(dtemp2.gt.dlim) cycle
+               dtemp=dtemp1+dtemp2
+               if(dtemp.gt.dlim) cycle
+               dtemp=sqrt(dtemp)
+               dtemp=exp(-dtemp)
+             else if(avetype.eq.3)then
+               dtemp1=dlong*dlong*den_along2
+               if(dtemp1.gt.dlim) cycle
+               dtemp2=dmid*dmid*den_amid2
+               if(dtemp2.gt.dlim) cycle
+               dtemp=dtemp1+dtemp2
+               if(dtemp.gt.dlim) cycle
+               dtemp=exp(-dtemp)
+             else if(avetype.eq.1)then
+               dtemp1=abs(dlong*den_along)
+               if(dtemp1.gt.1.0d0)cycle
+               dtemp2=abs(dmid*den_amid)
+               if(dtemp2.gt.1.0d0) cycle
+               dtemp=dtemp1*dtemp1+dtemp2*dtemp2
+               dtemp=sqrt(dtemp)
+               dtemp3=dtemp*dtemp*dtemp
+               dtemp=1.0d0-1.5*dtemp+0.5*dtemp3
+               if(dtemp.lt.0.0d0) cycle
+             else if(avetype.eq.4)then
+               dtemp1=abs(dlong*den_along)
+               if(dtemp1.gt.1.0d0) cycle
+               dtemp2=abs(dmid*den_amid)
+               if(dtemp2.gt.1.0d0) cycle
+               dtemp=dtemp1*dtemp1+dtemp2*dtemp2
+               dtemp=sqrt(dtemp)
+               dtemp=1.0d0-(dtemp**power)
+               if(dtemp.lt.0.0d0) cycle
+             end if
+             dtemp=dtemp*area(knode)
+             do ireal=1,nreal
+                dvector1(ireal)=dvector1(ireal)+dtemp*diid(knode,ireal)
+             end do
+             den=den+dtemp*dtemp
+           end do
+           do ireal=1,nreal
+             dtemp=dvector1(ireal)*sqrt(vvar/den)              ! Ensures that it has the correct variance
+             if(transtype.eq.0)then
+               randfield(jnode,ireal)=mean(jnode)+dtemp
+             else
+               if(dtemp.gt.100.0d0) dtemp=100.0d0
+               randfield(jnode,ireal)=mean(jnode)*(10**dtemp)
+             end if
+           end do
+         end if
+       end do
+       go to 9900
+
+9000   write(amessage,9010) trim(varname),trim(function_name)
+9010   format('The ',a,' argument of function ',a,' must be greater than zero.')
+       go to 9890
+
+9100   write(amessage,9110) trim(varname)
+9110   format('All elements of the ',a,' array are supplied as zero.')
+       go to 9890
+
+9200   write(amessage,9210) trim(function_name)
+9210   format('Memory management error encountered in function ',a,'.')
+       go to 9890
+
+9890   fieldgen2d_sva_iid=1
+
+9900   continue
+       return
+
+end function fieldgen2d_sva_iid
+
+
+
+integer (kind=c_int) function fieldgen3d_sva_iid(            &
+                              nnode,                         &
+                              ec,nc,zc,                      &
+                              area,height,active,            &
+                              mean,var,                      &
+                              ahmax,ahmin,avert,             &
+                              bearing,dip,rake,              &
+                              transtype,avetype,power,       &
+                              ldrand,nreal,diid,randfield)   &
+                 bind(C,name="fieldgen3d_sva_iid")
+
+! -- This function generates 3D stochastic fields based on a spatially varying variogram.
+! -- It does this by spatial convolution using an averaging function.
+! -- It differs from fieldgen3d_sva in that the standard normal variates used in the
+! -- convolution are supplied by the caller via the DIID array, rather than drawn
+! -- internally from the random number generator.
+
+       use iso_c_binding, only: c_int,c_double
+       use dimvar
+       use utilities
+       implicit none
+
+       integer(kind=c_int), intent(in)   :: nnode                       ! Nodes in model grid
+       real(kind=c_double), intent(in)   :: ec(nnode),nc(nnode),zc(nnode)! x,y,z coordinates of nodes
+       real(kind=c_double), intent(in)   :: area(nnode)            ! Areas of grid cells
+       real(kind=c_double), intent(in)   :: height(nnode)          ! Height of grid cells
+       integer(kind=c_int), intent(in)   :: active(nnode)          ! 0=inactive cell
+       real(kind=c_double), intent(in)   :: mean(nnode)            ! Mean value of stochastic field
+       real(kind=c_double), intent(in)   :: var(nnode)             ! Variance of stochastic field
+       real(kind=c_double), intent(in)   :: ahmax(nnode),ahmin(nnode),avert(nnode) ! Ave func. correlation lengths
+       real(kind=c_double), intent(in)   :: bearing(nnode)         ! Bearing of ahmax direction
+       real(kind=c_double), intent(in)   :: dip(nnode)             ! Dip of ahmax direction
+       real(kind=c_double), intent(in)   :: rake(nnode)            ! Rotation of ahmin direction
+       integer(kind=c_int), intent(in)   :: transtype              ! Stochastic field pertains to natural(0) or log(1) props
+       integer(kind=c_int), intent(in)   :: avetype                ! 1:spher,2:exp,3:gauss,4:pow
+       real(kind=c_double), intent(in)   :: power                  ! Power used in power AVETYPE
+       integer(kind=c_int), intent(in)   :: ldrand                 ! Leading dimension of RANDFIELD and DIID
+       integer(kind=c_int), intent(in)   :: nreal                  ! Number of realisations to generate
+       real(kind=c_double), intent(in)   :: diid(ldrand,nreal)     ! Standard normal variates supplied by caller
+       real(kind=c_double), intent(out)  :: randfield(ldrand,nreal)! Realisations
+
+       integer                 :: jnode,knode
+       integer                 :: ireal
+       double precision        :: xi,yi,zi
+       double precision        :: aavert
+       double precision        :: vvar,along,amid,cosang1,sinang1,ang1
+       double precision        :: cosang2,sinang2,cosang3,sinang3
+       double precision        :: den_along,den_along2,den_amid,den_amid2,den
+       double precision        :: den_avert,den_avert2
+       double precision        :: xd,yd,zd,xdd,ydd,zdd
+       double precision        :: xdiff,ydiff,zdiff,dlong,dmid,dvert
+       double precision        :: dtemp,dtemp1,dtemp2,dtemp3
+       double precision        :: dlim,pidiv180
+       character(len=25)       :: varname
+
+! -- Initialisation
+
+       fieldgen3d_sva_iid=0
+       function_name='fieldgen3d_sva_iid()'
+       pidiv180=3.1415926535898d0/180.0d0
+       dlim=1.0d-5
+
+! -- Check input arguments.
+
+       if((transtype.ne.0).and.(transtype.ne.1))then
+         write(amessage,100) 'TRANSTYPE',trim(function_name)
+100      format('The ',a,' argument of function ',a,' must be ',  &
+         'supplied as 0 or 1.')
+         go to 9890
+       end if
+       if((avetype.ne.1).and.(avetype.ne.2).and.(avetype.ne.3).and.(avetype.ne.4))then
+         write(amessage,105)  trim(function_name)
+105      format('The AVETYPE argument of function ',a,' must be ',  &
+         'supplied as 1, 2, 3 or 4.')
+         go to 9890
+       end if
+       if(avetype.eq.4)then
+         if(power.le.0.0d0)then
+           write(amessage,106) trim(function_name)
+106        format('If AVETYPE is set to 4, then the POWER argument of function ',a,    &
+           ' must be greater than zero.')
+           go to 9890
+         end if
+       end if
+       if(nnode.le.0)then
+         varname='NNODE'
+         go to 9000
+       end if
+       if(nreal.le.0)then
+         varname='NREAL'
+         go to 9000
+       end if
+       if(ldrand.lt.nnode)then
+         write(amessage,107) trim(function_name)
+107      format('LDRAND must equal or exceed NNODE in call to function ',a,'.')
+         go to 9890
+       end if
+       if(all(active.eq.0))then
+         varname='ACTIVE'
+         go to 9100
+       end if
+       do jnode=1,nnode
+         if(active(jnode).ne.0)then
+           if(area(jnode).le.0.0d0)then
+             write(amessage,170) 'AREA'
+170          format('At least one ',a,' value is zero or negative for an active model node.')
+             go to 9890
+           end if
+           if(height(jnode).le.0.0d0)then
+             write(amessage,170) 'HEIGHT'
+             go to 9890
+           end if
+           if(var(jnode).lt.0.0d0)then
+             write(amessage,171) 'VAR'
+171          format('At least one ',a,' value is negative for an active model node.')
+             go to 9890
+           end if
+           if(ahmax(jnode).le.0.0d0)then
+             write(amessage,170) 'AHMAX'
+             go to 9890
+           end if
+           if(ahmin(jnode).le.0.0d0)then
+             write(amessage,170) 'AHMIN'
+             go to 9890
+           end if
+           if(avert(jnode).le.0.0d0)then
+             write(amessage,170) 'AVERT'
+             go to 9890
+           end if
+           if((bearing(jnode).lt.-360.0d0).or.(bearing(jnode).gt.360.0d0))then
+             write(amessage,180)
+180          format('At least one BEARING value is less than -360 degrees or greater than ',  &
+             '360 degrees for an active model node.')
+             go to 9890
+           end if
+           if((dip(jnode).lt.-180.0d0).or.(dip(jnode).gt.180.0d0))then
+             write(amessage,181)
+181          format('At least one DIP value is less than -180 degrees or greater than ',  &
+             '180 degrees for an active model node.')
+             go to 9890
+           end if
+           if((rake(jnode).lt.-90.0d0).or.(rake(jnode).gt.90.0d0))then
+             write(amessage,182)
+182          format('At least one RAKE value is less than -90 degrees or greater than ',  &
+             '90 degrees for an active model node.')
+             go to 9890
+           end if
+         end if
+       end do
+
+! -- Allocate the work vector used in the convolution loop.
+
+       if(utl_allocate_vector('d',1,nreal).ne.0) go to 9200
+
+! -- Evaluate limit threshold
+
+       if(dlim.eq.0.0d0)then
+         dlim=1.0d30
+       else
+         if(avetype.eq.2)then
+           dlim=-log(dlim)
+           dlim=dlim*dlim              ! applies to x^2
+         else if(avetype.eq.3)then
+           dlim=-log(dlim)             ! applies to x^2
+         else if(avetype.eq.1)then
+           dlim=1.0d0
+         else if(avetype.eq.4)then
+           dlim=1.0d0
+         end if
+       end if
+
+! -- Do the convolution
+
+       do jnode=1,nnode
+         if(active(jnode).ne.0)then
+           xi=ec(jnode)
+           yi=nc(jnode)
+           zi=zc(jnode)
+           vvar=var(jnode)
+           along=ahmax(jnode)
+           amid=ahmin(jnode)
+           aavert=avert(jnode)
+           ang1=90.0d0-bearing(jnode)
+           cosang1=cos(ang1*pidiv180)
+           sinang1=sin(ang1*pidiv180)
+           cosang2=cos(dip(jnode)*pidiv180)
+           sinang2=sin(dip(jnode)*pidiv180)
+           cosang3=cos(rake(jnode)*pidiv180)
+           sinang3=sin(rake(jnode)*pidiv180)
+           den_along=1.0d0/along
+           den_along2=den_along*den_along
+           den_amid=1.0d0/amid
+           den_amid2=den_amid*den_amid
+           den_avert=1.0d0/aavert
+           den_avert2=den_avert*den_avert
+           den=0.0d0
+           dvector1=0.0d0   ! an array
+           do knode=1,nnode
+             if(active(knode).eq.0)cycle
+             xdiff=ec(knode)-xi
+             ydiff=nc(knode)-yi
+             zdiff=zc(knode)-zi
+             xd=xdiff*cosang1+ydiff*sinang1
+             yd=-xdiff*sinang1+ydiff*cosang1
+             zd=zdiff
+             xdd=xd*cosang2+zd*sinang2
+             ydd=yd
+             zdd=-xd*sinang2+zd*cosang2
+             dlong=xdd
+             dmid=ydd*cosang3+zdd*sinang3
+             dvert=-ydd*sinang3+zdd*cosang3
+             if(avetype.eq.2)then
+               dtemp1=dlong*dlong*den_along2
+               if(dtemp1.gt.dlim) cycle
+               dtemp2=dmid*dmid*den_amid2
+               if(dtemp2.gt.dlim) cycle
+               dtemp3=dvert*dvert*den_avert2
+               if(dtemp3.gt.dlim) cycle
+               dtemp=dtemp1+dtemp2+dtemp3
+               if(dtemp.gt.dlim) cycle
+               dtemp=sqrt(dtemp)
+               dtemp=exp(-dtemp)
+             else if(avetype.eq.3)then
+               dtemp1=dlong*dlong*den_along2
+               if(dtemp1.gt.dlim) cycle
+               dtemp2=dmid*dmid*den_amid2
+               if(dtemp2.gt.dlim) cycle
+               dtemp3=dvert*dvert*den_avert2
+               if(dtemp3.gt.dlim) cycle
+               dtemp=dtemp1+dtemp2+dtemp3
+               if(dtemp.gt.dlim) cycle
+               dtemp=exp(-dtemp)
+             else if(avetype.eq.1)then
+               dtemp1=abs(dlong*den_along)
+               if(dtemp1.gt.1.0d0)cycle
+               dtemp2=abs(dmid*den_amid)
+               if(dtemp2.gt.1.0d0) cycle
+               dtemp3=abs(dvert*den_avert)
+               if(dtemp3.gt.1.0d0) cycle
+               dtemp=dtemp1*dtemp1+dtemp2*dtemp2+dtemp3*dtemp3
+               dtemp=sqrt(dtemp)
+               dtemp3=dtemp*dtemp*dtemp
+               dtemp=1.0d0-1.5*dtemp+0.5*dtemp3
+               if(dtemp.lt.0.0d0) cycle
+             else if(avetype.eq.4)then
+               dtemp1=abs(dlong*den_along)
+               if(dtemp1.gt.1.0d0) cycle
+               dtemp2=abs(dmid*den_amid)
+               if(dtemp2.gt.1.0d0) cycle
+               dtemp3=abs(dvert*den_avert)
+               if(dtemp3.gt.1.0d0) cycle
+               dtemp=dtemp1*dtemp1+dtemp2*dtemp2+dtemp3*dtemp3
+               dtemp=sqrt(dtemp)
+               dtemp=1.0d0-(dtemp**power)
+               if(dtemp.lt.0.0d0) cycle
+             end if
+             dtemp=dtemp*area(knode)*height(knode)
+             do ireal=1,nreal
+               dvector1(ireal)=dvector1(ireal)+dtemp*diid(knode,ireal)
+             end do
+             den=den+dtemp*dtemp
+           end do
+           do ireal=1,nreal
+             dtemp=dvector1(ireal)*sqrt(vvar/den)          ! Ensures that it has the correct variance
+             if(transtype.eq.0)then
+               randfield(jnode,ireal)=mean(jnode)+dtemp
+             else
+               if(dtemp.gt.100.0d0) dtemp=100.0d0
+               randfield(jnode,ireal)=mean(jnode)*(10**dtemp)
+             end if
+           end do
+         end if
+       end do
+
+       go to 9900
+
+9000   write(amessage,9010) trim(varname),trim(function_name)
+9010   format('The ',a,' argument of function ',a,' must be greater than zero.')
+       go to 9890
+
+9100   write(amessage,9110) trim(varname),trim(function_name)
+9110   format('All elements of the ',a,' array are supplied as zero in call to ',  &
+       'function ',a,'.')
+       go to 9890
+
+9200   write(amessage,9210) trim(function_name)
+9210   format('Memory management error encountered in function ',a,'.')
+       go to 9890
+
+9890   fieldgen3d_sva_iid=1
+
+9900   continue
+       return
+
+end function fieldgen3d_sva_iid
+
+
+
 subroutine free_param_memory1()
        use used_by_kb2d_1
        implicit none

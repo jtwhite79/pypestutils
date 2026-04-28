@@ -534,3 +534,64 @@ def prototype(lib) -> None:
         ndpointer(c_double, ndim=2, flags=("F", "W")),  # randfield(ldrand,nreal), out
     )
     lib.fieldgen3d_sva.restype = c_int
+
+    # fill_stdnormal(nrow,ncol,array)
+    lib.fill_stdnormal.argtypes = (
+        POINTER(c_int),  # nrow, in
+        POINTER(c_int),  # ncol, in
+        ndpointer(c_double, ndim=2, flags=("F", "W")),  # array(nrow,ncol), out
+    )
+    lib.fill_stdnormal.restype = c_int
+
+    # fieldgen2d_sva_iid(
+    #   nnode,ec,nc,area,active,mean,var,aa,anis,bearing,
+    #   transtype,avetype,power,ldrand,nreal,diid,randfield)
+    lib.fieldgen2d_sva_iid.argtypes = (
+        POINTER(c_int),  # nnode, in
+        ndpointer(c_double, ndim=1, flags="F"),  # ec(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # nc(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # area(nnode), in
+        ndpointer(c_int, ndim=1, flags="F"),  # active(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # mean(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # var(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # aa(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # anis(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # bearing(nnode), in
+        POINTER(c_int),  # transtype, in
+        POINTER(c_int),  # avetype, in
+        POINTER(c_double),  # power, in
+        POINTER(c_int),  # ldrand, in
+        POINTER(c_int),  # nreal, in
+        ndpointer(c_double, ndim=2, flags="F"),  # diid(ldrand,nreal), in
+        ndpointer(c_double, ndim=2, flags=("F", "W")),  # randfield(ldrand,nreal), out
+    )
+    lib.fieldgen2d_sva_iid.restype = c_int
+
+    # fieldgen3d_sva_iid(
+    #   nnode,ec,nc,zc,area,height,active,mean,var,ahmax,ahmin,avert,
+    #   bearing,dip,rake,transtype,avetype,power,ldrand,nreal,diid,randfield)
+    lib.fieldgen3d_sva_iid.argtypes = (
+        POINTER(c_int),  # nnode, in
+        ndpointer(c_double, ndim=1, flags="F"),  # ec(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # nc(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # zc(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # area(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # height(nnode), in
+        ndpointer(c_int, ndim=1, flags="F"),  # active(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # mean(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # var(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # ahmax(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # ahmin(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # avert(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # bearing(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # dip(nnode), in
+        ndpointer(c_double, ndim=1, flags="F"),  # rake(nnode), in
+        POINTER(c_int),  # transtype, in
+        POINTER(c_int),  # avetype, in
+        POINTER(c_double),  # power, in
+        POINTER(c_int),  # ldrand, in
+        POINTER(c_int),  # nreal, in
+        ndpointer(c_double, ndim=2, flags="F"),  # diid(ldrand,nreal), in
+        ndpointer(c_double, ndim=2, flags=("F", "W")),  # randfield(ldrand,nreal), out
+    )
+    lib.fieldgen3d_sva_iid.restype = c_int

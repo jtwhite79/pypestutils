@@ -1841,3 +1841,287 @@ class PestUtilsLib:
             raise PestUtilsLibError(self.retrieve_error_message())
         self.logger.info("generated 3D stochastic fields for %d realisations", nreal)
         return randfield.copy("A")
+
+    def fill_stdnormal(self, nrow: int, ncol: int) -> npt.NDArray[np.float64]:
+        """Fill a (nrow, ncol) array with standard normal variates.
+
+        The variates are drawn in the same loop order used internally by
+        :meth:`fieldgen2d_sva` and :meth:`fieldgen3d_sva` (outer loop over the
+        second axis, inner loop over the first axis), so the returned array can
+        be passed to :meth:`fieldgen2d_sva_iid` / :meth:`fieldgen3d_sva_iid` to
+        reproduce the field that the non-iid functions would produce for the
+        same seed.
+
+        :meth:`initialize_randgen` must be called before this method.
+
+        Parameters
+        ----------
+        nrow, ncol : int
+            Output array shape.
+
+        Returns
+        -------
+        npt.NDArray[np.float64]
+            Array of shape (nrow, ncol) of standard normal variates,
+            Fortran-ordered.
+        """
+        nrow = int(nrow)
+        ncol = int(ncol)
+        array = np.zeros((nrow, ncol), np.float64, order="F")
+        res = self.pestutils.fill_stdnormal(
+            byref(c_int(nrow)),
+            byref(c_int(ncol)),
+            array,
+        )
+        if res != 0:
+            raise PestUtilsLibError(self.retrieve_error_message())
+        self.logger.info("filled %d x %d array with standard normal variates", nrow, ncol)
+        return array
+
+    def fieldgen2d_sva_iid(
+        self,
+        ec: npt.ArrayLike,
+        nc: npt.ArrayLike,
+        area: float | npt.ArrayLike,
+        active: int | npt.ArrayLike,
+        mean: float | npt.ArrayLike,
+        var: float | npt.ArrayLike,
+        aa: float | npt.ArrayLike,
+        anis: float | npt.ArrayLike,
+        bearing: float | npt.ArrayLike,
+        transtype: int | str | enum.TransType,
+        avetype: int | str | enum.VarioType,
+        power: float,
+        diid: npt.ArrayLike,
+    ) -> npt.NDArray[np.float64]:
+        """Generate 2D stochastic fields from caller-supplied standard normal variates.
+
+        Like :meth:`fieldgen2d_sva`, but the standard normal variates that drive
+        the spatial convolution are supplied by the caller via ``diid`` instead
+        of being drawn internally. Calling :meth:`initialize_randgen` is not
+        required.
+
+        Parameters
+        ----------
+        ec, nc : array_like
+            Model grid coordinates, each 1D array with shape (nnode,).
+        area : float or array_like
+            Areas of grid cells.
+        active : int or array_like
+            Inactive grid cells are equal to zero.
+        mean : float or array_like
+            Mean value of stochastic field.
+        var : float or array_like
+            Variance of stochastic field.
+        aa : float or array_like
+            Averaging function spatial dimension.
+        anis : float or array_like
+            Anisotropy ratio.
+        bearing : float or array_like
+            Bearing of principal anisotropy axis.
+        transtype : int, str or enum.TransType
+            Stochastic field pertains to natural(0) or log(1) properties.
+        avetype : int, str or enum.VarioType
+            Averaging function type, where 1:spher, 2:exp, 3:gauss, 4:pow.
+        power : float
+            Power used if avetype is 4 (pow).
+        diid : array_like
+            Standard normal variates with shape (nnode,) for a single
+            realisation, or (nnode, nreal) for multiple realisations. Values at
+            inactive nodes are ignored.
+
+        Returns
+        -------
+        npt.NDArray[np.float64]
+            Realisations with shape (nnode, nreal).
+        """
+        node = ManyArrays(
+            {"ec": ec, "nc": nc},
+            {
+                "area": area,
+                "mean": mean,
+                "var": var,
+                "aa": aa,
+                "anis": anis,
+                "bearing": bearing,
+            },
+            {"active": active},
+        )
+        if isinstance(transtype, str):
+            transtype = enum.TransType.get_value(transtype)
+        if isinstance(avetype, str):
+            avetype = enum.VarioType.get_value(avetype)
+        ldrand = nnode = len(node)
+        diid_arr = np.asarray(diid, dtype=np.float64)
+        if diid_arr.ndim == 1:
+            diid_arr = diid_arr.reshape(-1, 1)
+        if diid_arr.ndim != 2:
+            raise ValueError(
+                f"diid must be 1D (nnode,) or 2D (nnode, nreal); got ndim={diid_arr.ndim}"
+            )
+        if diid_arr.shape[0] != nnode:
+            raise ValueError(
+                f"diid first dimension {diid_arr.shape[0]} does not match nnode {nnode}"
+            )
+        if not np.all(np.isfinite(diid_arr)):
+            raise ValueError("diid contains non-finite values")
+        diid_f = np.asfortranarray(diid_arr)
+        nreal = diid_f.shape[1]
+        randfield = np.zeros((ldrand, nreal), np.float64, order="F")
+        res = self.pestutils.fieldgen2d_sva_iid(
+            byref(c_int(nnode)),
+            node.ec,
+            node.nc,
+            node.area,
+            node.active,
+            node.mean,
+            node.var,
+            node.aa,
+            node.anis,
+            node.bearing,
+            byref(c_int(transtype)),
+            byref(c_int(avetype)),
+            byref(c_double(power)),
+            byref(c_int(ldrand)),
+            byref(c_int(nreal)),
+            diid_f,
+            randfield,
+        )
+        if res != 0:
+            raise PestUtilsLibError(self.retrieve_error_message())
+        self.logger.info(
+            "generated 2D stochastic fields for %d realisations from supplied variates", nreal
+        )
+        return randfield.copy("A")
+
+    def fieldgen3d_sva_iid(
+        self,
+        ec: npt.ArrayLike,
+        nc: npt.ArrayLike,
+        zc: npt.ArrayLike,
+        area: float | npt.ArrayLike,
+        height: float | npt.ArrayLike,
+        active: int | npt.ArrayLike,
+        mean: float | npt.ArrayLike,
+        var: float | npt.ArrayLike,
+        ahmax: float | npt.ArrayLike,
+        ahmin: float | npt.ArrayLike,
+        avert: float | npt.ArrayLike,
+        bearing: float | npt.ArrayLike,
+        dip: float | npt.ArrayLike,
+        rake: float | npt.ArrayLike,
+        transtype: int | str | enum.TransType,
+        avetype: int | str | enum.VarioType,
+        power: float,
+        diid: npt.ArrayLike,
+    ) -> npt.NDArray[np.float64]:
+        """Generate 3D stochastic fields from caller-supplied standard normal variates.
+
+        Like :meth:`fieldgen3d_sva`, but the standard normal variates that drive
+        the spatial convolution are supplied by the caller via ``diid`` instead
+        of being drawn internally. Calling :meth:`initialize_randgen` is not
+        required.
+
+        Parameters
+        ----------
+        ec, nc, zc : array_like
+            Model grid coordinates, each 1D array with shape (nnode,).
+        area, height : float or array_like
+            Areas and height of grid cells.
+        active : int or array_like
+            Inactive grid cells are equal to zero.
+        mean : float or array_like
+            Mean value of stochastic field.
+        var : float or array_like
+            Variance of stochastic field.
+        ahmax, ahmin, avert : float or array_like
+            Averaging function correlation lengths.
+        bearing : float or array_like
+            Bearing of ahmax direction.
+        dip : float or array_like
+            Dip of ahmax direction.
+        rake : float or array_like
+            Rotation of ahmin direction.
+        transtype : int, str or enum.TransType
+            Stochastic field pertains to natural(0) or log(1) properties.
+        avetype : int, str or enum.VarioType
+            Averaging function type, where 1:spher, 2:exp, 3:gauss, 4:pow.
+        power : float
+            Power used if avetype is 4 (pow).
+        diid : array_like
+            Standard normal variates with shape (nnode,) for a single
+            realisation, or (nnode, nreal) for multiple realisations. Values at
+            inactive nodes are ignored.
+
+        Returns
+        -------
+        npt.NDArray[np.float64]
+            Realisations with shape (nnode, nreal).
+        """
+        node = ManyArrays(
+            {"ec": ec, "nc": nc, "zc": zc},
+            {
+                "area": area,
+                "height": height,
+                "mean": mean,
+                "var": var,
+                "ahmax": ahmax,
+                "ahmin": ahmin,
+                "avert": avert,
+                "bearing": bearing,
+                "dip": dip,
+                "rake": rake,
+            },
+            {"active": active},
+        )
+        if isinstance(transtype, str):
+            transtype = enum.TransType.get_value(transtype)
+        if isinstance(avetype, str):
+            avetype = enum.VarioType.get_value(avetype)
+        ldrand = nnode = len(node)
+        diid_arr = np.asarray(diid, dtype=np.float64)
+        if diid_arr.ndim == 1:
+            diid_arr = diid_arr.reshape(-1, 1)
+        if diid_arr.ndim != 2:
+            raise ValueError(
+                f"diid must be 1D (nnode,) or 2D (nnode, nreal); got ndim={diid_arr.ndim}"
+            )
+        if diid_arr.shape[0] != nnode:
+            raise ValueError(
+                f"diid first dimension {diid_arr.shape[0]} does not match nnode {nnode}"
+            )
+        if not np.all(np.isfinite(diid_arr)):
+            raise ValueError("diid contains non-finite values")
+        diid_f = np.asfortranarray(diid_arr)
+        nreal = diid_f.shape[1]
+        randfield = np.zeros((ldrand, nreal), np.float64, order="F")
+        res = self.pestutils.fieldgen3d_sva_iid(
+            byref(c_int(nnode)),
+            node.ec,
+            node.nc,
+            node.zc,
+            node.area,
+            node.height,
+            node.active,
+            node.mean,
+            node.var,
+            node.ahmax,
+            node.ahmin,
+            node.avert,
+            node.bearing,
+            node.dip,
+            node.rake,
+            byref(c_int(transtype)),
+            byref(c_int(avetype)),
+            byref(c_double(power)),
+            byref(c_int(ldrand)),
+            byref(c_int(nreal)),
+            diid_f,
+            randfield,
+        )
+        if res != 0:
+            raise PestUtilsLibError(self.retrieve_error_message())
+        self.logger.info(
+            "generated 3D stochastic fields for %d realisations from supplied variates", nreal
+        )
+        return randfield.copy("A")

@@ -338,6 +338,42 @@ John Doherty, 2023
 
 [Notes](#notes-23)
 
+[fill_stdnormal](#fill_stdnormal)
+
+[Description](#description-27)
+
+[Function Call](#function-call-27)
+
+[Return Value](#return-value-25)
+
+[Function Arguments](#function-arguments-27)
+
+[Notes](#notes-24)
+
+[fieldgen2d_sva_iid](#fieldgen2d_sva_iid)
+
+[Description](#description-28)
+
+[Function Call](#function-call-28)
+
+[Return Value](#return-value-26)
+
+[Function Arguments](#function-arguments-28)
+
+[Notes](#notes-25)
+
+[fieldgen3d_sva_iid](#fieldgen3d_sva_iid)
+
+[Description](#description-29)
+
+[Function Call](#function-call-29)
+
+[Return Value](#return-value-27)
+
+[Function Arguments](#function-arguments-29)
+
+[Notes](#notes-26)
+
 [Driver Programs](#driver-programs)
 
 [Introduction](#introduction-1)
@@ -1843,6 +1879,153 @@ If *transtype* is set to 1, then hydraulic property fields, and the user-supplie
 #### Active and Inactive Cells
 
 Random hydraulic properties are assigned only to cells that are designated as active. Additionally, random number averaging is performed only over active cells. *randfield* values that are ascribed to inactive cells on entry to function *fieldgen3d_sva()* are left unaltered by this function.
+
+## fill_stdnormal
+
+### Description
+
+Function *fill_stdnormal()* fills a two-dimensional array with samples from the standard normal distribution (mean zero, variance one). It uses the same random number generator and the same loop order as functions *fieldgen2d_sva()* and *fieldgen3d_sva()*: the outer loop is over the second array index and the inner loop is over the first. As a consequence, calling *fill_stdnormal(nnode, nreal, array)* immediately after *initialize_randgen(iseed)* produces an array whose contents are identical to the *(nnode, nreal)* array of independent random variates that *fieldgen2d_sva()* or *fieldgen3d_sva()* would draw internally if invoked next with the same *iseed*. *fill_stdnormal()* is therefore intended to be used together with *fieldgen2d_sva_iid()* and *fieldgen3d_sva_iid()* (see below) to reproduce, or substitute for, the random number sequence consumed by *fieldgen2d_sva()* and *fieldgen3d_sva()*.
+
+Function *initialize_randgen()* must be called before *fill_stdnormal()*.
+
+### Function Call
+
+<div style="text-align: left"><table><colgroup><col style="width: 100%" /></colgroup><thead><tr class="header"><th>integer (kind=c_int) function fill_stdnormal(nrow,ncol,array)<br>use iso_c_binding, only: c_int,c_double<br>integer(kind=c_int), intent(in) :: nrow<br>integer(kind=c_int), intent(in) :: ncol<br>real(kind=c_double), intent(out) :: array(nrow,ncol)<br>end function fill_stdnormal<br></th></tr></thead><tbody></tbody></table>
+</div>
+
+### Return Value
+
+Function *fill_stdnormal()* returns a value of zero unless an error condition is encountered, in which case it returns a value of 1. In the latter case, an error message can be retrieved using function *retrieve_error_message()*.
+
+### Function Arguments
+
+| **Argument** | **Role**                                                                                                  |
+|--------------|-----------------------------------------------------------------------------------------------------------|
+| nrow         | The leading (first) dimension of the *array* that is to be filled.                                        |
+| ncol         | The trailing (second) dimension of the *array* that is to be filled.                                      |
+| array        | On exit, this two-dimensional array is filled with independent samples from the standard normal distribution. |
+
+### Notes
+
+The order in which random variates are written to *array* matches the order in which *fieldgen2d_sva()* and *fieldgen3d_sva()* draw their internal *(nnode, nreal)* working array. Specifically, *array(i,j)* for *j* = 1, 2, …, *ncol* and *i* = 1, 2, …, *nrow* is filled with the *((j-1)\*nrow + i)*'th call to the underlying standard-normal generator. Hence, after *initialize_randgen(iseed)*, the array returned by *fill_stdnormal(nnode, nreal, array)* is bit-for-bit identical to the array of standard normal variates that *fieldgen2d_sva()* or *fieldgen3d_sva()* would have drawn internally for the same *iseed* and the same *nnode* and *nreal*.
+
+## fieldgen2d_sva_iid
+
+### Description
+
+Function *fieldgen2d_sva_iid()* generates 2D stochastic hydraulic property fields by exactly the same spatial-averaging algorithm as *fieldgen2d_sva()* (see that function's *Description* and *Some Theory* sections for full details). It differs from *fieldgen2d_sva()* in only one respect: the array of independent standard-normal variates that drives the spatial convolution is supplied to it by the caller as a function argument, rather than being drawn internally from the random number generator.
+
+This separation between random number generation and field generation has several uses:
+
+1. The same *(nnode, nreal)* array of variates can be passed to multiple calls of *fieldgen2d_sva_iid()* with different spatial averaging settings (correlation length, anisotropy, bearing, etc.) so that the effect of those settings can be inspected without the confounding effect of a different underlying random sample.
+2. A caller can supply variates produced by an external random number generator (for example NumPy's *Generator.standard_normal()*) and so reproduce stochastic fields exactly across processes, machines and languages, without depending on the FORTRAN compiler's intrinsic *random_number()* implementation.
+3. Because the resulting field is a deterministic, linear (for *transtype* = 0) function of the supplied variates, the field can be used as part of a differentiable workflow: derivatives of the field with respect to the supplied variates are simply the spatial-averaging weights.
+
+The output of *fieldgen2d_sva_iid()* is bit-for-bit identical to that of *fieldgen2d_sva()* when the *diid* argument is the same array that *fieldgen2d_sva()* would have drawn internally; this can be obtained by calling *initialize_randgen()* with the same seed and then calling *fill_stdnormal(nnode, nreal, diid)*.
+
+Unlike *fieldgen2d_sva()*, function *fieldgen2d_sva_iid()* does not require *initialize_randgen()* to have been called before it is invoked.
+
+### Function Call
+
+<div style="text-align: left"><table><colgroup><col style="width: 100%" /></colgroup><thead><tr class="header"><th>integer (kind=c_int) function fieldgen2d_sva_iid( &amp;<br>nnode, &amp;<br>ec,nc,area,active, &amp;<br>mean,var,aa,anis,bearing, &amp;<br>transtype,avetype,power, &amp;<br>ldrand,nreal,diid,randfield)<br>use iso_c_binding, only: c_int,c_double<br>integer(kind=c_int), intent(in) :: nnode<br>real(kind=c_double), intent(in) :: ec(nnode),nc(nnode)<br>real(kind=c_double), intent(in) :: area(nnode)<br>integer(kind=c_int), intent(in) :: active(nnode)<br>real(kind=c_double), intent(in) :: mean(nnode)<br>real(kind=c_double), intent(in) :: var(nnode)<br>real(kind=c_double), intent(in) :: aa(nnode)<br>real(kind=c_double), intent(in) :: anis(nnode)<br>real(kind=c_double), intent(in) :: bearing(nnode)<br>integer(kind=c_int), intent(in) :: transtype<br>integer(kind=c_int), intent(in) :: avetype<br>real(kind=c_double), intent(in) :: power<br>integer(kind=c_int), intent(in) :: ldrand<br>integer(kind=c_int), intent(in) :: nreal<br>real(kind=c_double), intent(in) :: diid(ldrand,nreal)<br>real(kind=c_double), intent(out) :: randfield(ldrand,nreal)<br>end function fieldgen2d_sva_iid<br></th></tr></thead><tbody></tbody></table>
+</div>
+
+### Return Value
+
+Function *fieldgen2d_sva_iid()* returns a value of zero unless an error condition is encountered, in which case it returns a value of 1. In the latter case, an error message can be retrieved using function *retrieve_error_message()*.
+
+### Function Arguments
+
+| **Argument** | **Role**                                                                                                                               |
+|--------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| nnode        | The number of nodes (i.e. cells) in the pertinent layer of the model grid.                                                             |
+| ec, nc       | East and north coordinates of model grid nodes (i.e. model grid cell centres).                                                         |
+| area         | The area of a model cell. (This is used in spatial averaging.)                                                                         |
+| active       | Set to 0 for an inactive cell. See below.                                                                                              |
+| mean         | Cell-by-cell values of the mean hydraulic property. Stochastic fields are centred on these means.                                      |
+| var          | The variance of hydraulic property variation about the mean at each model cell. This is respected in stochastic field generation       |
+| aa           | The "a" value appearing in the equations for averaging functions in the documentation of *fieldgen2d_sva()*.                            |
+| anis         | The ratio of hydraulic property correlation length in the principal direction of anisotropy to that in directions perpendicular to it. |
+| bearing      | The angle between north and the principal direction of anisotropy. This angle is measured clockwise.                                   |
+| transtype    | Set to 0 if stochastic properties pertain to natural numbers, and to 1 if they pertain to the logs of natural numbers. See below.      |
+| avetype      | Averaging function; 1 = spherical; 2 = exponential; 3 = Gaussian; 4 = power.                                                           |
+| power        | The power used in the averaging function if *avetype* is set to 4.                                                                     |
+| ldrand       | The leading dimension of the *diid* and *randfield* arrays. (Note that the FORTRAN array indicial convention is used.)                 |
+| nreal        | The number of realisations to be generated.                                                                                            |
+| diid         | A *(ldrand, nreal)* array of independent samples from the standard normal distribution, supplied by the caller. See below.             |
+| randfield    | On exit, this array contains stochastic hydraulic property fields.                                                                     |
+
+### Notes
+
+#### The diid Array
+
+The *diid* array must contain independent samples from the standard normal distribution if the resulting fields are to have the statistical properties documented for *fieldgen2d_sva()*. The first *nnode* entries of column *ireal* of *diid* are associated, one-to-one, with the *nnode* model cells; entries beyond row *nnode* are not used. Entries that are associated with inactive cells are also not used. The caller may obtain a suitable array from *fill_stdnormal()* (which uses the same random number generator as *fieldgen2d_sva()*) or from any external generator.
+
+If the *diid* array is the array that would be returned by a call to *fill_stdnormal(nnode, nreal, diid)* immediately following *initialize_randgen(iseed)*, the field generated by *fieldgen2d_sva_iid()* is bit-for-bit identical to the field generated by *fieldgen2d_sva()* called with the same spatial inputs after *initialize_randgen(iseed)*.
+
+#### Random Number Generator Initialization
+
+Unlike *fieldgen2d_sva()*, *fieldgen2d_sva_iid()* does not consult, advance or otherwise depend on the state of the FORTRAN random number generator. Function *initialize_randgen()* therefore need not be called before *fieldgen2d_sva_iid()*.
+
+#### Memory
+
+The *randfield* array must hold all stochastic fields at once. Unlike *fieldgen2d_sva()*, *fieldgen2d_sva_iid()* does not allocate a working array of independent random numbers internally; that array is supplied by the caller.
+
+#### Log-Transformation
+
+If *transtype* is set to 1, then hydraulic property fields, and the user-supplied variables that govern them, pertain to the log (to base 10) of hydraulic property values. These are used to multiply the mean hydraulic property field supplied by the calling program. The resulting fields are then anti-logged before being returned through the *randfield* array.
+
+#### Active and Inactive Cells
+
+Random hydraulic properties are assigned only to cells that are designated as active. Additionally, random number averaging is performed only over active cells. *randfield* values that are ascribed to inactive cells on entry to function *fieldgen2d_sva_iid()* are left unaltered by this function. Entries of *diid* associated with inactive cells are likewise ignored.
+
+## fieldgen3d_sva_iid
+
+### Description
+
+Function *fieldgen3d_sva_iid()* is to *fieldgen3d_sva()* as *fieldgen2d_sva_iid()* is to *fieldgen2d_sva()*: it generates 3D stochastic hydraulic property fields by exactly the same spatial-averaging algorithm as *fieldgen3d_sva()*, but the array of independent standard-normal variates that drives the spatial convolution is supplied by the caller rather than drawn internally. See the documentation of *fieldgen2d_sva_iid()* for the rationale, and the documentation of *fieldgen3d_sva()* for the underlying algorithm.
+
+The output of *fieldgen3d_sva_iid()* is bit-for-bit identical to that of *fieldgen3d_sva()* when the *diid* argument is the array that would be returned by a call to *fill_stdnormal(nnode, nreal, diid)* immediately following *initialize_randgen()* with the same seed.
+
+Unlike *fieldgen3d_sva()*, function *fieldgen3d_sva_iid()* does not require *initialize_randgen()* to have been called before it is invoked.
+
+### Function Call
+
+<div style="text-align: left"><table><colgroup><col style="width: 100%" /></colgroup><thead><tr class="header"><th>integer (kind=c_int) function fieldgen3d_sva_iid( &amp;<br>nnode, &amp;<br>ec,nc,zc, &amp;<br>area,height,active, &amp;<br>mean,var, &amp;<br>ahmax,ahmin,avert, &amp;<br>bearing,dip,rake, &amp;<br>transtype,avetype,power, &amp;<br>ldrand,nreal,diid,randfield)<br>use iso_c_binding, only: c_int,c_double<br>integer(kind=c_int), intent(in) :: nnode<br>real(kind=c_double), intent(in) :: ec(nnode),nc(nnode),zc(nnode)<br>real(kind=c_double), intent(in) :: area(nnode)<br>real(kind=c_double), intent(in) :: height(nnode)<br>integer(kind=c_int), intent(in) :: active(nnode)<br>real(kind=c_double), intent(in) :: mean(nnode)<br>real(kind=c_double), intent(in) :: var(nnode)<br>real(kind=c_double), intent(in) :: ahmax(nnode),ahmin(nnode),avert(nnode)<br>real(kind=c_double), intent(in) :: bearing(nnode)<br>real(kind=c_double), intent(in) :: dip(nnode)<br>real(kind=c_double), intent(in) :: rake(nnode)<br>integer(kind=c_int), intent(in) :: transtype<br>integer(kind=c_int), intent(in) :: avetype<br>real(kind=c_double), intent(in) :: power<br>integer(kind=c_int), intent(in) :: ldrand<br>integer(kind=c_int), intent(in) :: nreal<br>real(kind=c_double), intent(in) :: diid(ldrand,nreal)<br>real(kind=c_double), intent(out) :: randfield(ldrand,nreal)<br>end function fieldgen3d_sva_iid<br></th></tr></thead><tbody></tbody></table>
+</div>
+
+### Return Value
+
+Function *fieldgen3d_sva_iid()* returns a value of zero unless an error condition is encountered, in which case it returns a value of 1. In the latter case, an error message can be retrieved using function *retrieve_error_message()*.
+
+### Function Arguments
+
+| **Argument** | **Role**                                                                                                                                                          |
+|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| nnode        | The number of nodes (i.e. cells) in the pertinent layer of the model grid.                                                                                        |
+| ec, nc, zc   | East, north and elevation coordinates of model grid nodes (i.e. model grid cell centres).                                                                         |
+| area         | The area of a model cell. (This is used in spatial averaging.)                                                                                                    |
+| height       | The height of a model cell. (This is used in spatial averaging.)                                                                                                  |
+| active       | Set to 0 for an inactive cell. See below.                                                                                                                         |
+| mean         | Cell-by-cell values of the mean hydraulic property. Stochastic fields are centred on these means.                                                                 |
+| var          | The variance of hydraulic property variation about the mean at each model cell. This is respected in stochastic field generation                                  |
+| ahmax        | The "a" value appearing in the equations for averaging functions in the principal direction of anisotropy.                                                        |
+| ahmin        | The "a" value appearing in the equations for averaging functions in a direction that is perpendicular to that of *ahmax* in a horizontal/subhorizontal direction. |
+| avert        | The "a" value appearing in the equations for averaging functions in a direction that is perpendicular to that of *ahmax* and *ahmin*.                             |
+| bearing      | The angle between north and the principal direction of anisotropy. This angle is measured clockwise.                                                              |
+| dip          | The dip of the *ahmax* direction below the horizontal.                                                                                                            |
+| rake         | The rotation of the *ahmin* direction about the *ahmax* axis.                                                                                                     |
+| transtype    | Set to 0 if stochastic properties pertain to natural numbers, and to 1 if they pertain to the logs of natural numbers. See below.                                 |
+| avetype      | Averaging function; 1 = spherical; 2 = exponential; 3 = Gaussian; 4 = power.                                                                                      |
+| power        | The power used in the averaging function if *avetype* is set to 4.                                                                                                |
+| ldrand       | The leading dimension of the *diid* and *randfield* arrays. (Note that the FORTRAN array indicial convention is used.)                                            |
+| nreal        | The number of realisations to be generated.                                                                                                                       |
+| diid         | A *(ldrand, nreal)* array of independent samples from the standard normal distribution, supplied by the caller. See *fieldgen2d_sva_iid()*.                       |
+| randfield    | On exit, this array contains stochastic hydraulic property fields.                                                                                                |
+
+### Notes
+
+See the *Notes* for *fieldgen2d_sva_iid()* for the role of the *diid* array, the absence of any dependence on *initialize_randgen()*, the memory implications, log-transformation behaviour, and the treatment of active and inactive cells. Apart from the use of three correlation lengths *ahmax*, *ahmin* and *avert* and three orientation angles *bearing*, *dip* and *rake* in place of *aa*, *anis* and *bearing*, the behaviour of *fieldgen3d_sva_iid()* is identical to that of *fieldgen2d_sva_iid()*.
 
 # Driver Programs
 
