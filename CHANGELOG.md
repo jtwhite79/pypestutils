@@ -6,7 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- `fieldgen2d_sva_z()` and `fieldgen3d_sva_z()`: generate stochastic fields from user-supplied standard normal deviates instead of internally drawn random numbers; new example notebook `fieldgen_with_supplied_z.ipynb`
 ### Changed
+- `fieldgen2d_sva()` and `fieldgen3d_sva()` now draw deviates and delegate to the `_z` variants (output is unchanged for a given seed)
 ### Fixed
 
 ## [0.3.0] - 2025-02-12
