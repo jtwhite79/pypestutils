@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from ctypes import byref, c_char, c_double, c_int, create_string_buffer
 from os import PathLike
 from pathlib import Path
@@ -14,7 +13,7 @@ from . import enum
 from .data import ManyArrays, validate_scalar
 
 
-class PestUtilsLibError(BaseException):
+class PestUtilsLibError(Exception):
     """Exception from PestUtilsLib."""
 
     pass
@@ -25,15 +24,22 @@ class PestUtilsLib:
 
     Parameters
     ----------
-    logger_level : int, str, default 20 (INFO)
+    logger_level : int, str or None, optional
+        Level of the pypestutils logger, which echoes library calls to stdout:
+        "DEBUG" (10), "INFO" (20), "WARNING" (30), "ERROR" (40) or
+        "CRITICAL" (50).  The logger is shared by all instances and the helper
+        functions, so this sets the level for all of them.  Default None
+        leaves the level unchanged ("WARNING", which does not echo routine
+        messages, unless it has been changed, for example with
+        :func:`pypestutils.logger.set_logger_level`).
     """
 
-    def __init__(self, *, logger_level=logging.INFO) -> None:
+    def __init__(self, *, logger_level: int | str | None = None) -> None:
         from .ctypes_declarations import prototype
         from .finder import load
-        from .logger import get_logger
+        from .logger import LOGGER_NAME, get_logger
 
-        self.logger = get_logger(self.__class__.__name__, logger_level)
+        self.logger = get_logger(LOGGER_NAME, logger_level)
         self.pestutils = load()
         self.logger.debug("loaded %s", self.pestutils)
         prototype(self.pestutils)
